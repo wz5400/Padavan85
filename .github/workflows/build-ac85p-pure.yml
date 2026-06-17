@@ -1,94 +1,71 @@
-#修改TNAME: K2P-5.0 中的K2P-5.0为你需要编译的型号，注意名称要与configs/templates/目录下的名字相同
-name: build-padavan_85p_stable
-
-on: 
-  release:
-    types: [published]
+name: Build Padavan RT-AC85P
+# 触发方式：star点击/推送代码时编译
+on:
   push:
-    tags:
-    - 'v*'
-    branches: 
-      - master
-  schedule:
-    - cron: 0 19 * * *
+    branches: [ main ]
   watch:
     types: [started]
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
-    if: github.event.repository.owner.id == github.event.sender.id
-
+    runs-on: ubuntu-22.04
+    env:
+      # 编译机型，RT-AC85P 对应模板文件名
+      TARGET_NAME: RT-AC85P
+      # Padavan 源码仓库（稳定版推荐，避免snapshot文件结构变动）
+      PADAVAN_GIT: https://github.com/wz5400/Padavan85.git
+      WORK_DIR: Padavan85
     steps:
-    - name: Checkout
-      uses: actions/checkout@master
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        echo "###########################"
-        pwd
-        #
-        sudo mv Btools /opt/
-        cd /opt/Btools
-        echo "sudo ls -l"
-        pwd
-        sudo ls -l
-        echo "###########################"
-        #
-        sudo apt-get update
-        sudo apt-get -y install unzip libtool-bin curl cmake gperf gawk flex bison nano xxd \
-        cpio git python-docutils gettext automake autopoint texinfo build-essential help2man \
-        pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev gcc-multilib
-    - name: Clone source code
-      run: |
-        git clone --depth=1 https://gitlab.com/padavan-ng/padavan-ng.git /opt/rt-n56u
-        sed -i 's/{ "wl_auth_mode", "psk" },/{ "wl_auth_mode", "open" },/g' /opt/rt-n56u/trunk/user/shared/defaults.c
-        sed -i 's/{ "rt_auth_mode", "psk" },/{ "rt_auth_mode", "open" },/g' /opt/rt-n56u/trunk/user/shared/defaults.c
-        sed -i 's/my.router/p.to/g' /opt/rt-n56u/trunk/user/rc/net_wan.c  
-        mkdir -p /opt/images/
-        #
-        cd /opt/Btools/Setconfig/
-        sh install_Setconfig.sh
-        #
-         cd /opt/Btools/LANG_CN/
-         sh install_LANG_CN.sh
-        #
-         cd /opt/Btools/LANG_CN/
-         sh install_LANG_CN_SSD.sh
-        #
-         cd /opt/Btools/Theme/
-         sh install_Theme.sh
-        #
-         cd /opt/Btools/Patch/
-         sh install_Patch.sh
-        #
-        cd /opt/Btools/build_toolchain
-        sh install_build_toolchain.sh
-        #
-    - name: Build Firmware
-      run: |
-        cd /opt/rt-n56u/trunk
-        sudo ./clear_tree.sh
-        sudo ./build_firmware.sh
-        sudo ./build_firmware_modify RT-AC85P
-        
-        sudo mv -f images/*.trx /opt/images/
-    - name : Upload packages
-      uses: actions/upload-artifact@master
-      if: always()
-      with:
-        name: Padavan-packages
-        path: /opt/images
-    - name: Upload firmware to cowtransfer
-      if: always()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer cow --block 2621440 -s -p 64 --no-progress /opt/images 2>&1 | tee cowtransfer.log
-        echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-    - name: Upload firmware to WeTransfer
-      if: always()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer wet -s -p 16 --no-progress /opt/images 2>&1 | tee wetransfer.log
-        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+      # 1. 修复Node.js弃用警告，升级checkout到v5
+      - name: 拉取编译脚本仓库
+        uses: actions/checkout@v5
+
+      # 2. 安装Padavan全套编译依赖
+      - name: 安装编译依赖
+        run: |
+          sudo apt update
+          sudo apt install -y autoconf automake autopoint bison build-essential flex gawk gettext git gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot
+
+      # 3. 拉取Padavan完整源码（递归子模块，解决toolchain目录缺失）
+      - name: 拉取Padavan源码
+        run: |
+          git clone --recursive ${{ env.PADAVAN_GIT }} ${{ env.WORK_DIR }}
+          cd ${{ env.WORK_DIR }}
+          ls -la toolchain-mipsel || echo "警告：toolchain-mipsel目录缺失，源码仓库不完整"
+
+      # 4. 编译交叉工具链（修复clean_sources找不到的兼容逻辑）
+      - name: 编译交叉工具链 mipsel
+        run: |
+          cd ${{ env.WORK_DIR }}/toolchain-mipsel
+          # 兼容处理：找不到clean_sources则跳过清理，避免exit code 127
+          if [ -f "./clean_sources" ];then
+            chmod +x ./clean_sources
+            ./clean_sources
+          else
+            echo "未检测到clean_sources脚本，跳过清理步骤"
+          fi
+          chmod +x ./build_toolchain
+          ./build_toolchain
+
+      # 5. 配置RT-AC85P机型固件
+      - name: 加载机型配置
+        run: |
+          cd ${{ env.WORK_DIR }}/trunk
+          cp configs/templates/${{ env.TARGET_NAME }}.config .config
+          # 可在此处自定义插件开关，示例：开启科学插件
+          # sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSP=0/CONFIG_FIRMWARE_INCLUDE_SSP=1/' .config
+
+      # 6. 编译固件
+      - name: 编译Padavan固件
+        run: |
+          cd ${{ env.WORK_DIR }}/trunk
+          ./clear_tree
+          fakeroot ./build_firmware_modify ${{ env.TARGET_NAME }}
+
+      # 7. 上传编译好的固件包
+      - name: 上传固件Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Padavan-${{ env.TARGET_NAME }}-固件
+          path: ${{ env.WORK_DIR }}/trunk/images/*.trx
+          retention-days: 30
