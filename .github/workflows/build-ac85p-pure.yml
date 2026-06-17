@@ -1,5 +1,5 @@
 name: Build Padavan RT-AC85P
-# 触发方式：star点击/推送代码时编译
+# 触发条件：推送代码 / 点Star自动编译
 on:
   push:
     branches: [ main ]
@@ -10,49 +10,47 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 编译机型，RT-AC85P 对应模板文件名
       TARGET_NAME: RT-AC85P
-      # Padavan 源码仓库（稳定版推荐，避免snapshot文件结构变动）
+      # 替换为你指定的源码仓库
       PADAVAN_GIT: https://github.com/wz5400/Padavan85.git
-      WORK_DIR: Padavan85
+      WORK_DIR: rt-n56u
     steps:
-      # 1. 修复Node.js弃用警告，升级checkout到v5
-      - name: 拉取编译脚本仓库
+      # 1. 拉取仓库脚本，升级checkout v5解决Node20警告
+      - name: 拉取编译配置仓库
         uses: actions/checkout@v5
 
-      # 2. 安装Padavan全套编译依赖
+      # 2. 安装全套编译依赖（包含help2man，修复configure缺失工具报错）
       - name: 安装编译依赖
         run: |
-          sudo apt update
-          sudo apt install -y autoconf automake autopoint bison build-essential flex gawk gettext git gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot
+          sudo apt update -qq
+          sudo apt install -qqy autoconf automake autopoint bison build-essential flex gawk gettext git gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man
 
-      # 3. 拉取Padavan完整源码（递归子模块，解决toolchain目录缺失）
-      - name: 拉取Padavan源码
+      # 3. 完整拉取Padavan源码+递归子模块，防止toolchain目录缺失
+      - name: 拉取Padavan完整源码
         run: |
           git clone --recursive ${{ env.PADAVAN_GIT }} ${{ env.WORK_DIR }}
           cd ${{ env.WORK_DIR }}
-          ls -la toolchain-mipsel || echo "警告：toolchain-mipsel目录缺失，源码仓库不完整"
+          ls -la toolchain-mipsel
 
-      # 4. 编译交叉工具链（修复clean_sources找不到的兼容逻辑）
-      - name: 编译交叉工具链 mipsel
+      # 4. 编译mipsel交叉工具链（兼容判断clean_sources，规避exit code 127）
+      - name: 编译mipsel交叉工具链
         run: |
           cd ${{ env.WORK_DIR }}/toolchain-mipsel
-          # 兼容处理：找不到clean_sources则跳过清理，避免exit code 127
           if [ -f "./clean_sources" ];then
             chmod +x ./clean_sources
             ./clean_sources
           else
-            echo "未检测到clean_sources脚本，跳过清理步骤"
+            echo "未找到clean_sources脚本，跳过清理步骤"
           fi
           chmod +x ./build_toolchain
           ./build_toolchain
 
-      # 5. 配置RT-AC85P机型固件
+      # 5. 载入RT-AC85P机型配置模板
       - name: 加载机型配置
         run: |
           cd ${{ env.WORK_DIR }}/trunk
           cp configs/templates/${{ env.TARGET_NAME }}.config .config
-          # 可在此处自定义插件开关，示例：开启科学插件
+          # 此处可自行添加sed命令开启/关闭插件，示例：
           # sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSP=0/CONFIG_FIRMWARE_INCLUDE_SSP=1/' .config
 
       # 6. 编译固件
@@ -62,8 +60,8 @@ jobs:
           ./clear_tree
           fakeroot ./build_firmware_modify ${{ env.TARGET_NAME }}
 
-      # 7. 上传编译好的固件包
-      - name: 上传固件Artifact
+      # 7. 上传编译产出固件包
+      - name: 上传固件至Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Padavan-${{ env.TARGET_NAME }}-固件
