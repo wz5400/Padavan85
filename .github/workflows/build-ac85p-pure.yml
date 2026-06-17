@@ -1,0 +1,31 @@
+name: Build Padavan
+on:
+  workflow_dispatch: # 支持页面手动触发
+  watch:
+    types: [started] # star触发编译
+env:
+  TNAME: RT-AC85P # 修改你的机型
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 安装编译依赖
+        run: |
+          sudo apt update -qq
+          sudo apt install -y autoconf automake bison build-essential flex gawk gettext gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils fakeroot kmod cpio xxd unzip
+      - name: 拉取源码
+        uses: actions/checkout@v4
+      - name: 编译交叉工具链
+        run: |
+          cd toolchain-mipsel
+          ./clean_sources
+          ./build_toolchain
+      - name: 编译固件
+        run: |
+          cd trunk
+          ./build_firmware ${{ env.TNAME }}
+      - name: 上传固件
+        uses: actions/upload-artifact@v4
+        with:
+          name: Padavan-Firmware
+          path: trunk/images/
