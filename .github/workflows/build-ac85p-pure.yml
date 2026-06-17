@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       TARGET_NAME: RT-AC85P
-      # 你指定的源码仓库
+      # 你指定的Padavan源码仓库
       PADAVAN_GIT: https://github.com/wz5400/Padavan85.git
       WORK_DIR: rt-n56u
     steps:
@@ -19,20 +19,27 @@ jobs:
       - name: 拉取编译配置仓库
         uses: actions/checkout@v5
 
-      # 2. 安装全套编译依赖（新增libtool，同时保留help2man等所有必需工具）
+      # 2. 全套完整依赖，包含 libtool + help2man 解决两次configure报错
       - name: 安装编译依赖
         run: |
           sudo apt update -qq
           sudo apt install -qqy autoconf automake autopoint libtool bison build-essential flex gawk gettext git gperf pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man
 
-      # 3. 完整拉取Padavan源码+递归子模块，防止toolchain目录缺失
+      # 可选：缓存交叉工具链，大幅减少二次编译耗时
+      - name: 缓存交叉工具链
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.WORK_DIR }}/toolchain-mipsel/build
+          key: toolchain-mipsel-${{ env.TARGET_NAME }}
+
+      # 3. 递归拉取完整源码，保证toolchain-mipsel目录完整
       - name: 拉取Padavan完整源码
         run: |
           git clone --recursive ${{ env.PADAVAN_GIT }} ${{ env.WORK_DIR }}
           cd ${{ env.WORK_DIR }}
           ls -la toolchain-mipsel
 
-      # 4. 编译mipsel交叉工具链（兼容判断clean_sources，规避exit code 127）
+      # 4. 编译mipsel交叉工具链，兼容无clean_sources脚本场景
       - name: 编译mipsel交叉工具链
         run: |
           cd ${{ env.WORK_DIR }}/toolchain-mipsel
@@ -45,12 +52,12 @@ jobs:
           chmod +x ./build_toolchain
           ./build_toolchain
 
-      # 5. 载入RT-AC85P机型配置模板
+      # 5. 加载AC85P机型配置
       - name: 加载机型配置
         run: |
           cd ${{ env.WORK_DIR }}/trunk
           cp configs/templates/${{ env.TARGET_NAME }}.config .config
-          # 此处可自行添加sed命令开启/关闭插件，示例：
+          # 插件开关示例，按需取消注释修改0/1
           # sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSP=0/CONFIG_FIRMWARE_INCLUDE_SSP=1/' .config
 
       # 6. 编译固件
@@ -60,7 +67,7 @@ jobs:
           ./clear_tree
           fakeroot ./build_firmware_modify ${{ env.TARGET_NAME }}
 
-      # 7. 上传编译产出固件包
+      # 7. 上传固件文件
       - name: 上传固件至Artifact
         uses: actions/upload-artifact@v4
         with:
