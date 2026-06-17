@@ -1,42 +1,48 @@
-name: build-RT-AC85P
-
-on: 
-  #push:
-   # branches:
-   # - "*"
+name: Build AC85P Pure Padavan
+# 触发方式：页面手动运行 / Star一键编译
+on:
   workflow_dispatch:
+  watch:
+    types: [started]
+
+env:
+  TARGET: RT-AC85P
+  IMG_PATH: trunk/images
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        target: [RT-AC85P]
-        toolchain: [mipsel-linux-musl]
+  compile:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: 拉取仓库完整源码
+        uses: actions/checkout@v4
         with:
-          ref: dev
-      - uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ matrix.target }}-${{ matrix.toolchain }}
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.23.0'
-          check-latest: true
-          cache: false
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 20
-          check-latest: true
-      - name: Prepare
+          fetch-depth: 0
+
+      - name: 安装4.4内核全套编译依赖
         run: |
-          sudo apt update
-          sudo apt install libtool-bin gperf python3-docutils autopoint gettext ccache
-      - name: Build
+          sudo apt update -y
+          sudo apt install -y autoconf automake bison build-essential flex gawk gettext gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils fakeroot kmod cpio xxd unzip libncurses5-dev gcc-multilib g++-multilib git
+
+      - name: 清理全部编译缓存
         run: |
-          make ${{ matrix.target }} TOOLCHAIN=${{ matrix.toolchain }}
-      - uses: actions/upload-artifact@v4
+          cd trunk
+          ./clean_all
+          cd ../toolchain-mipsel
+          ./clean_sources
+
+      - name: 编译交叉工具链
+        run: |
+          cd toolchain-mipsel
+          ./build_toolchain
+
+      - name: 编译纯净RT-AC85P固件（不加载附加插件）
+        run: |
+          cd trunk
+          ./build_firmware ${{ env.TARGET }} clean-only
+
+      - name: 上传固件到Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}-${{ matrix.toolchain }}
-          path: trunk/images/*.trx
+          name: RT-AC85P-纯净Padavan固件
+          path: ${{ env.IMG_PATH }}
+          retention-days: 30
