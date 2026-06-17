@@ -16,7 +16,7 @@ jobs:
     steps:
       # 拉取wz5400/Padavan85完整源码
       - name: 检出仓库源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
