@@ -1,4 +1,4 @@
-name: Build AC85P Pure Padavan
+name: Build AC85P Padavan 3.4内核纯净版
 # 触发方式：页面手动运行 / Star一键编译
 on:
   workflow_dispatch:
@@ -6,43 +6,51 @@ on:
     types: [started]
 
 env:
-  TARGET: RT-AC85P
-  IMG_PATH: trunk/images
+  TARGET_MODEL: RT-AC85P
+  IMG_OUTPUT: trunk/images
+  TOOLCHAIN_DIR: toolchain-mipsel
 
 jobs:
-  compile:
+  compile_k34:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取仓库完整源码
+      # 拉取wz5400/Padavan85完整源码
+      - name: 检出仓库源码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 安装4.4内核全套编译依赖
+      # 3.4内核专用编译依赖（去除4.4需要的multilib）
+      - name: 安装3.4内核编译依赖
         run: |
-          sudo apt update -y
-          sudo apt install -y autoconf automake bison build-essential flex gawk gettext gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils fakeroot kmod cpio xxd unzip libncurses5-dev gcc-multilib g++-multilib git
+          sudo apt update -qq
+          sudo apt install -y autoconf automake autopoint bison build-essential flex gawk gettext gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils fakeroot kmod cpio xxd unzip libncurses5-dev git wget
 
-      - name: 清理全部编译缓存
+      # 清理旧工具链与编译缓存
+      - name: 全量清理缓存
         run: |
           cd trunk
           ./clean_all
-          cd ../toolchain-mipsel
+          cd ../${{ env.TOOLCHAIN_DIR }}
           ./clean_sources
 
-      - name: 编译交叉工具链
+      # 编译3.4专用交叉工具链（核心区别！）
+      - name: 编译3.4.x交叉工具链
         run: |
-          cd toolchain-mipsel
-          ./build_toolchain
+          cd ${{ env.TOOLCHAIN_DIR }}
+          ./build_toolchain_3.4.x
 
-      - name: 编译纯净RT-AC85P固件（不加载附加插件）
+      # 编译纯净RT-AC85P 3.4固件
+      - name: 编译3.4内核纯净固件
         run: |
           cd trunk
-          ./build_firmware ${{ env.TARGET }} clean-only
+          # clean-only 不打包第三方插件，极致纯净
+          ./build_firmware ${{ env.TARGET_MODEL }} clean-only
 
-      - name: 上传固件到Artifacts
+      # 上传固件包
+      - name: 打包上传固件
         uses: actions/upload-artifact@v4
         with:
-          name: RT-AC85P-纯净Padavan固件
-          path: ${{ env.IMG_PATH }}
+          name: RT-AC85P-K34-纯净Padavan
+          path: ${{ env.IMG_OUTPUT }}
           retention-days: 30
