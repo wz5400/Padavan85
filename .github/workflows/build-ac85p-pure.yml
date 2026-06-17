@@ -11,19 +11,19 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       TARGET_NAME: RT-AC85P
-      # 替换为你指定的源码仓库
+      # 你指定的源码仓库
       PADAVAN_GIT: https://github.com/wz5400/Padavan85.git
       WORK_DIR: rt-n56u
     steps:
-      # 1. 拉取仓库脚本，升级checkout v5解决Node20警告
+      # 1. 拉取仓库脚本，checkout v5 消除Node20警告
       - name: 拉取编译配置仓库
         uses: actions/checkout@v5
 
-      # 2. 安装全套编译依赖（包含help2man，修复configure缺失工具报错）
+      # 2. 安装全套编译依赖（新增libtool，同时保留help2man等所有必需工具）
       - name: 安装编译依赖
         run: |
           sudo apt update -qq
-          sudo apt install -qqy autoconf automake autopoint bison build-essential flex gawk gettext git gperf libtool pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man
+          sudo apt install -qqy autoconf automake autopoint libtool bison build-essential flex gawk gettext git gperf pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man
 
       # 3. 完整拉取Padavan源码+递归子模块，防止toolchain目录缺失
       - name: 拉取Padavan完整源码
