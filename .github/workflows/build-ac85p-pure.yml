@@ -19,13 +19,13 @@ jobs:
       - name: 拉取编译配置仓库
         uses: actions/checkout@v5
 
-      # 2. 全套完整依赖，包含 libtool + help2man 解决两次configure报错
+      # 2. 完整全套依赖：新增 libtool-bin、gpatch，补齐所有configure所需工具
       - name: 安装编译依赖
         run: |
           sudo apt update -qq
-          sudo apt install -qqy autoconf automake autopoint libtool bison build-essential flex gawk gettext git gperf pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man
+          sudo apt install -qqy autoconf automake autopoint libtool libtool-bin bison build-essential flex gawk gettext git gperf pkg-config zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev texinfo python3-docutils unzip fakeroot help2man patch gpatch
 
-      # 可选：缓存交叉工具链，大幅减少二次编译耗时
+      # 缓存交叉工具链，减少重复编译时间
       - name: 缓存交叉工具链
         uses: actions/cache@v3
         with:
